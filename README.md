@@ -1,2 +1,2 @@
 # Classifica-o
-Verificar qual é a melhor técnica de classificação para classificar determinadas espécies de peixe.
+Relatório online pelo Rpubs: https://rpubs.com/anacarlinham/classificacao
