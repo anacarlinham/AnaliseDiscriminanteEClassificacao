@@ -1,0 +1,277 @@
+---
+title: "Análise discriminante e classificação"
+author: "Ana Carla Menezes"
+output:
+  html_document:
+    toc: true
+    toc_float: 
+      collapsed: true
+      smooth_scroll: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, include=FALSE}
+library(raster)
+library(rgdal)
+library(rgeos)
+library(stats)
+library(factoextra)
+library(FactoMineR)
+library(cluster)
+library(readr)
+library(mclust)
+library(kableExtra)
+library(MASS)
+library(caret)
+library("class")
+library(caret)
+library(dplyr)
+```
+
+```{r}
+#Bibliotecas carregadas
+# library(raster)
+# library(rgdal)
+# library(rgeos)
+# library(stats)
+# library(factoextra)
+# library(FactoMineR)
+# library(cluster)
+# library(readr)
+# library(mclust)
+# library(kableExtra)
+# library("class")
+# library(caret)
+# library(dplyr)
+```
+
+
+```{r, include=FALSE}
+Fish <- read_csv("C:/Users/famil/Documents/Ana Carla UFPE/PeriodosUFPE/7P/Multivariada 2/Trabalho dois/Fish.csv")
+```
+
+## **1.**  Introdução
+
+Para realizar esta atividade o conjunto de dados utilizado é um registro de 7 espécies diferentes de peixes comuns nas vendas do mercado de peixes, tais como Bream, Parkki, Perch, Pike, Roach, Smelt e Whitefish. Para cada peixe há a informação do seu peso em gramas, comprimento 1, 2 e 3 referente ao comprimento vertical, diagonal e do cruzamento em centímetros. E a altura e a largura diagonal, também em centímetros. A Fonte dessas informações foi do site Kaggle.
+
+```{r}
+Fish %>%
+  kbl(caption = "Base de Dados") %>%
+  kable_classic(full_width = F, html_font = "")%>% 
+  scroll_box(width = "100%", height = "300px")
+```
+
+## **2.**  Objetivo
+Verificar qual é a melhor técnica de  classificação para classificar determinadas espécies de peixe. 
+
+## **3.** Análise discriminante e classificação 
+
+A análise discriminante já tem a priori os grupos definidos. O objetivo geral é associar os indivíduos aos grupos. Pra a tal, utilizamos alguns métodos como paramétricos, LDA, e  não paramétricos, o KNN, para duas ou mais populações.
+
+## **3.1.** Análise discriminante linear - LDA
+
+Temos um objeto D, que corresponde a uma função da diferença entre médias dos grupos, vamos entrar com valores correspondentes a esses grupos. Para isso preciso estimar minha matriz de covariância, e as médias da populações, isso na etapa de treinamento. Os treinamentos fazem inferência aos parâmetros. Assumimos que as matrizes de covariância das distribuições populacionais são iguais. O objetivo é que maximizar essa diferença.
+
+
+```{r}
+Fish$Species <- as.factor(Fish$Species)
+levels(Fish$Species)
+  
+  
+n <- length(Fish$Species)
+n
+train <- sample(1:n, n*0.7)
+attach(Fish)
+  
+r3 <- lda(Species ~ ., 
+            Fish, 
+            prior = c(1,1,1,1,1,1,1)/7, #Prior são probabilidades igualmente espaçadas.
+            subset= train)
+            
+  
+  #predicoes
+  plda= predict(object = r3,
+                newdata = Fish[-train,])
+  
+  #Resultado da classificaÃ§Ã£o
+  head(plda$class,7)
+  plda$class
+  #Prob. Posterior
+  head(plda$posterior,3)
+  
+  head(plda$x,3)
+  
+  
+  library(ggplot2)
+  library(scales)
+  library(gridExtra)
+  
+  pca <- prcomp(Fish[,-1],
+                center = TRUE,
+                scale. = TRUE)
+  
+  prop.pca = pca$sdev^2/sum(pca$svd^2)
+  
+  ##################
+  lda <- lda(Species ~ ., 
+             Fish, 
+             prior = c(1,1,1,1,1,1,1)/7)
+  
+  prop.lda = lda$svd^2/sum(lda$svd^2)
+  
+  plda <- predict(object = lda,
+                  newdata = Fish)
+  grp_LDA <- plda$class
+  grupos <- cbind(Fish[,1],grp_LDA)
+  #table(grupos$grp_LDA)
+  
+
+  ##################
+  
+   
+  dataset = data.frame(species = Fish[,"Species"],
+                       pca = pca$x, lda = plda$x)
+
+
+
+
+```
+
+```{r}
+tabelaLDA <- table(grupos$Species,grupos$grp_LDA)
+tabelaLDA <- tabelaLDA/rowSums(tabelaLDA)
+tabelaLDA <- tabelaLDA*100
+total<- rowSums(tabelaLDA)
+tabelaLDA <- round(tabelaLDA, digits = 2)
+tabelaLDA <- as.table(tabelaLDA)
+
+tabelaLDA <- cbind(tabelaLDA,total)
+colnames(tabelaLDA)<- c("Bream", "Parkki", "Perch", "Pike", "Roach", "Smelt", "Whitefish", "Total Original")
+
+tabelaLDA %>%
+  kbl(caption = "Tabela 1: Classificação final (%) resultante pelo método LDA") %>% 
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+classError(grupos$Species,grupos$grp_LDA)
+confusionMatrix(table(grupos$Species,grupos$grp_LDA))
+```
+
+Para a classificação realizada pela análise discriminante linear, obtemos uma acurácia de 0.9811 (IC(95%): [0.9459;0.9961]). Como a acurácia foi cerca de 98%, então podemos afirmar que  a classificação realizada pela análise discriminante linear obteve um bom desempenho.
+
+
+## **3.2.** K Nearest Neighbor - KNN
+
+Consiste em um classificador não paramétrico, aonde a estrutura do modelo será determinada pelo banco de dados utilizado. Após a escolha de um $x_{0}$ a ser classificado, ordenamos as observações, utilizando uma medida de distância. Logo depois, será escolhido um valor k referente ao número de grupos que serão alocadas as observações. Essas observações serão alocadas nos grupos através das técnicas do vizinho mais próximo.
+
+O banco de dados foi dividido em treinamento (n=107) e teste (n=52) e após a aplicação do modelo KNN, resultamos numa matriz de confusão observada na tabela 7.
+
+```{r}
+set.seed(222)
+
+indexes = sample(2, nrow(Fish),replace=TRUE,prob=c(0.7,0.3))
+
+Fish_train =Fish[indexes==1, 2:7]
+train = Fish_train
+
+Fish_test =Fish[indexes==2, 2:7]
+test = Fish_test
+
+Fish_train_labels = Fish[indexes==1,1]
+train.label = Fish_train_labels
+
+Fish_test_labels = Fish[indexes==2,1]
+test.label = Fish_test_labels
+
+
+Fish_train <- as.data.frame(Fish_train)
+Fish_test <- as.data.frame(Fish_test)
+Fish_train_labels <- as.data.frame(Fish_train_labels)
+
+
+Fish_mdl = knn(train=Fish_train, 
+               test = Fish_test,
+               cl = Fish_train_labels[,1],
+               k=7)
+
+
+Fish_mdl <- as_tibble(Fish_mdl)
+Fish_test_labels <- as_tibble(Fish_test_labels)
+
+library('gmodels')
+Fish_mdl$value
+table(Fish_test_labels$Species, Fish_mdl$value)
+CM = table(Fish_test_labels$Species, Fish_mdl$value)
+accuracy = (sum(diag(CM)))/sum(CM)
+
+Fish_mdl$value
+```
+
+
+```{r}
+# i=1
+# k.values = c()
+# accuracy_ = c()
+# 
+# while (i<11){
+#   Fish_mdl = knn(train=Fish_train, 
+#                test = Fish_test,
+#                cl = Fish_train_labels[,1],
+#                k=i)
+#   Fish_mdl <- as_tibble(Fish_mdl)
+#   Fish_test_labels <- as_tibble(Fish_test_labels)
+#   CM = table(Fish_test_labels$Species, Fish_mdl$value)
+#   accuracy = (sum(diag(CM)))/sum(CM)
+#   k.values[i] = i
+#   accuracy_[i] = accuracy
+#   i=i+1
+# }
+# 
+# resultado <- rbind(k.values,accuracy_)
+# resultado <- t(resultado)
+# resultado <- as.data.frame(resultado)
+# 
+
+#ggplot(resultado,aes(x=k.values,y=accuracy_)) + geom_point()+ geom_line(lty="dotted",color='red')
+
+```
+
+```{r}
+tabelaKNN <- table(Fish_test_labels$Species, Fish_mdl$value)
+tabelaKNN <- tabelaKNN/rowSums(tabelaKNN)
+tabelaKNN <- tabelaKNN*100
+total<- rowSums(tabelaKNN)
+tabelaKNN <- round(tabelaKNN, digits = 2)
+tabelaKNN <- as.table(tabelaKNN)
+
+tabelaKNN <- cbind(tabelaKNN,total)
+colnames(tabelaKNN)<- c("Bream", "Parkki", "Perch", "Pike", "Roach", "Smelt", "Whitefish", "Total Original")
+
+tabelaKNN %>%
+  kbl(caption = "Tabela 1: Classificação final (%) resultante pelo método LDA") %>% 
+  kable_classic(full_width = F, html_font = "Cambria")
+
+
+confusionMatrix(table(Fish_test_labels$Species, Fish_mdl$value))
+```
+
+Para a classificação realizado pelo K Nearest Neighbor, obtemos uma acurácia de 0.4615 (IC(95%): [0.3223; 0.6053]). Como a acurácia foi baixa, então podemos afirmar que  a classificação realizada pela KNN não obteve um bom desempenho.
+
+## **4.** Conclusão
+
+```{r}
+
+acc <- c("0.9811", "0.4615")
+ic <- c("(0.9459;0.9961)", "(0.3223; 0.6053)")
+tab <- cbind(acc, ic)
+colnames(tab) <- c("Acurácia", "Intervalo de confiança")
+rownames(tab) <- c("Análise discriminante linear", "K Nearest Neighbor")
+tab %>%
+  kbl(caption = "Tabela 4: Acurácia por método.") %>% 
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+Para o LDA, a acurácia foi de 0.9811 enquanto para o KNN, 0.4615. Por tanto concluímos que dentre os  métodos de classificação testados aquele que obteve uma melhor representação dos grupos originais de peixes foi o de Análise discriminante linear, já que sua acurácia foi maior do que a do método KNN.
